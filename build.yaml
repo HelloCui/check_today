@@ -1,0 +1,8 @@
+targets:
+  $default:
+    builders:
+      json_serializable:
+        options:
+          # flutter packages pub run build_runner build
+          # flutter packages pub run build_runner watch
+          include_if_null: false
