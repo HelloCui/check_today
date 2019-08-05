@@ -99,8 +99,8 @@ class _TodayItemState extends State<TodayItem> {
           });
         }
       }
-    } catch(err){
-      print(err);
+    } catch(e){
+      Common.handleError(e, context: context);
     }
 
   }

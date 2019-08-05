@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'dart:async';
 import '../model/user.dart';
+import '../model/task.dart';
 import '../common.dart';
 import '../global.dart';
-import 'package:flutter/scheduler.dart';
+import 'package:flutter/scheduler.dart' as Scheduler;
 
 class LoginPage extends StatefulWidget {
   final reason;
@@ -27,7 +28,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     $scaffoldKey = _scaffoldKey;
     super.initState();
     if(widget.reason != null) {
-      SchedulerBinding.instance.addPostFrameCallback((context){
+      Scheduler.SchedulerBinding.instance.addPostFrameCallback((context){
         Common.showSnackBar(_scaffoldKey, widget.reason, isError: true);
       });
     }
@@ -73,7 +74,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     return new Scaffold(
         key: _scaffoldKey,
         appBar: null,
-        body: Container(
+        body: SingleChildScrollView(
           padding: EdgeInsets.only(
               top: MediaQuery.of(context).size.height * 0.3,
               left: 30,
@@ -196,6 +197,7 @@ class _LoginCardState extends State<LoginCard> {
                             password: Common.generateMd5(_passwordCtrl.text));
                         Map result = await user.login();
                         if (result['status'] == true) {
+                          setNotification();
                           Navigator.pushReplacementNamed(context, '/home');
                           return;
                         }
@@ -399,4 +401,11 @@ class _RegisterCardState extends State<RegisterCard> {
       ],
     );
   }
+}
+
+// 登陆时设置消息提醒
+void setNotification() async {
+  List<Task> tasks = await Task.findReminds();
+  if(tasks.length <= 0) return;
+  tasks.forEach(Common.setTaskRemind);
 }

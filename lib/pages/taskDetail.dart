@@ -1,6 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../global.dart';
 import '../model/task.dart';
+import '../common.dart';
+import '../widgets/weekSheet.dart';
+import '../class/day.dart';
 
 class TaskDetail extends StatefulWidget {
   final item;
@@ -17,8 +21,10 @@ class _TaskDetailState extends State<TaskDetail> {
   BorderSide _border = $borderSide;
   double _iconWidth;
   bool _isAdd = true;
-  Task _task;
+  Task _task = new Task(isRemind: false);
   TextEditingController _textCtrl;
+  // 记录提醒时间是否被修改，如果是，在提交完成设置系统提醒
+  bool _remindDirty = false;
 
   @override
   void initState() {
@@ -26,15 +32,14 @@ class _TaskDetailState extends State<TaskDetail> {
     $scaffoldKey = _scaffoldKey;
     _iconWidth = ($screenWidth - _padding * 2) / _iconPerLine;
     if (widget.item != null) {
-      _task = new Task(
-        id: widget.item.taskId,
-        title: widget.item.title,
-        iconCode: widget.item.iconCode
-      );
-      _textCtrl = new TextEditingController(text: _task.title);
-      _isAdd = false;
-    } else {
-      _task = new Task();
+      Task.findOne(widget.item.taskId).then((res) {
+        _task = res;
+        _task.isRemind = _task.isRemind ?? false;
+        _initTime();
+        _textCtrl = new TextEditingController(text: _task.title);
+        _isAdd = false;
+        setState(() {});
+      });
     }
   }
 
@@ -54,12 +59,72 @@ class _TaskDetailState extends State<TaskDetail> {
                   hintText: '标题',
                 ),
                 controller: _textCtrl,
-                onChanged: ( newValue) => _task.title = newValue,
+                onChanged: (newValue) => _task.title = newValue,
               ),
               SizedBox(height: _spacing),
               Wrap(
                 children: _getAllIcons(),
-              )
+              ),
+              SizedBox(height: _spacing),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  Text('指定时间提醒'),
+                  Switch(
+                      value: _task.isRemind,
+                      onChanged: (value) {
+                        //重新构建页面
+                        setState(() {
+                          _task.isRemind = value;
+                          _initTime();
+                        });
+                        _remindDirty = true;
+                      })
+                ],
+              ),
+              SizedBox(
+                height: _spacing,
+              ),
+              !_task.isRemind
+                  ? Container()
+                  : Column(children: <Widget>[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: <Widget>[
+                          Text('提醒时间'),
+                          GestureDetector(
+                            child: Text(
+                                '${Common.fillZero(_task.remindTime.hour)}:${Common.fillZero(_task.remindTime.minute)}'),
+                            onTap: () {
+                              _pickTime();
+                            },
+                          )
+                        ],
+                      ),
+                      SizedBox(
+                        height: _spacing,
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: <Widget>[
+                          Text('重复'),
+                          GestureDetector(
+                              child: Text(
+                                selectedDaysStr(),
+                                textAlign: TextAlign.right,
+                              ),
+                              onTap: () {
+                                Future close = showModalBottomSheet<void>(
+                                    context: context,
+                                    builder: (BuildContext context) {
+                                      return WeekSheet(
+                                          _task.remindDays, _selectCallback);
+                                    });
+                                close.then((result) => {setState(() {})});
+                              }),
+                        ],
+                      ),
+                    ])
             ],
           ),
         ),
@@ -67,12 +132,14 @@ class _TaskDetailState extends State<TaskDetail> {
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisAlignment: MainAxisAlignment.end,
           children: <Widget>[
-            _isAdd ? null : FloatingActionButton(
-              heroTag: null,
-              backgroundColor: Colors.red[400],
-              child: Text('删除'),
-              onPressed: _delete,
-            ),
+            _isAdd
+                ? null
+                : FloatingActionButton(
+                    heroTag: null,
+                    backgroundColor: Colors.red[400],
+                    child: Text('删除'),
+                    onPressed: _delete,
+                  ),
             SizedBox(width: 15.0),
             FloatingActionButton(
               heroTag: null,
@@ -125,16 +192,13 @@ class _TaskDetailState extends State<TaskDetail> {
       return;
     }
     try {
-      final result = await _task.save();
-      if(result == true) {
-        Navigator.pop(context, 'refresh');
-      } else {
-        throw('Task save error!');
+      await _task.save();
+      if(_remindDirty) {
+        await Common.setTaskRemind(_task);
       }
+      Navigator.pop(context, 'refresh');
     } catch (e) {
-      print(e);
-      _scaffoldKey.currentState
-          .showSnackBar(SnackBar(content: Text('创建失败，请稍后重试。')));
+      Common.handleError(e, context: _scaffoldKey);
     }
   }
 
@@ -158,19 +222,13 @@ class _TaskDetailState extends State<TaskDetail> {
                 '删除',
                 style: TextStyle(color: Colors.red[400]),
               ),
-              onPressed: () async{
+              onPressed: () async {
                 try {
-                  final bool res = await _task.remove();
-                  if(res == true) {
-                    Navigator.pop(context);
-                    Navigator.pop(context, 'refresh');
-                  } else {
-                    throw('Task remove error!');
-                  }
-                } catch(e) {
-                  print(e);
-                  _scaffoldKey.currentState
-                      .showSnackBar(SnackBar(content: Text('删除失败，请稍后重试。')));
+                  await _task.remove();
+                  Navigator.pop(context);
+                  Navigator.pop(context, 'refresh');
+                } catch (e) {
+                  Common.handleError(e, context: _scaffoldKey);
                 }
               },
             ),
@@ -178,5 +236,43 @@ class _TaskDetailState extends State<TaskDetail> {
         );
       },
     );
+  }
+
+  _pickTime() async {
+    TimeOfDay time =
+        await showTimePicker(context: context, initialTime: _task.remindTime);
+    if (time != null) {
+      setState(() {
+        _task.remindTime = time;
+      });
+      _remindDirty = true;
+    }
+  }
+
+  void _selectCallback(List<Day> selectedItem) {
+    _task.remindDays = selectedItem;
+    _remindDirty = true;
+  }
+
+  String selectedDaysStr() {
+    if (_task.remindDays == null) return '请选择';
+    switch (_task.remindDays.length) {
+      case 0:
+        return '请选择';
+      case 7:
+        return '每天';
+      default:
+        return (_task.remindDays..sort((a, b) => a.code - b.code))
+            .map((item) => item.name)
+            .toList()
+            .join('，');
+    }
+  }
+
+  void _initTime() {
+    if (!_task.isRemind) return;
+    _task.remindTime =
+        _task.remindTime ?? TimeOfDay(hour: TimeOfDay.now().hour, minute: 0);
+    _task.remindDays = _task.remindDays ?? ([]..addAll($weekDay));
   }
 }

@@ -10,7 +10,15 @@ Task _$TaskFromJson(Map<String, dynamic> json) {
   return Task(
       id: json['id'] as String,
       iconCode: json['iconCode'] as int,
-      title: json['title'] as String);
+      title: json['title'] as String,
+      isRemind: json['isRemind'] as bool,
+      remindDays: (json['remindDays'] as List)
+          ?.map((e) =>
+              e == null ? null : _DayConverter.instance.fromJson(e as int))
+          ?.toList())
+    ..remindTime = json['remindTime'] == null
+        ? null
+        : _TimeConverter.instance.fromJson(json['remindTime'] as String);
 }
 
 Map<String, dynamic> _$TaskToJson(Task instance) {
@@ -25,6 +33,17 @@ Map<String, dynamic> _$TaskToJson(Task instance) {
   writeNotNull('id', instance.id);
   writeNotNull('title', instance.title);
   writeNotNull('iconCode', instance.iconCode);
+  writeNotNull('isRemind', instance.isRemind);
+  writeNotNull(
+      'remindDays',
+      instance.remindDays
+          ?.map((e) => e == null ? null : _DayConverter.instance.toJson(e))
+          ?.toList());
+  writeNotNull(
+      'remindTime',
+      instance.remindTime == null
+          ? null
+          : _TimeConverter.instance.toJson(instance.remindTime));
   return val;
 }
 
